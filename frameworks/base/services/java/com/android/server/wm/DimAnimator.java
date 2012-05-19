@@ -36,7 +36,7 @@ class DimAnimator {
     float mDimTargetAlpha;
     float mDimDeltaPerMs;
     long mLastDimAnimTime;
-
+    
     /**
      * Author: Onskreen
      * Date: 06/05/2011
@@ -200,7 +200,9 @@ class DimAnimator {
 
     public void printTo(String prefix, PrintWriter pw) {
         pw.print(prefix);
-        pw.print("mDimSurface="); pw.println(mDimSurface);
+        pw.print("mDimSurface="); pw.print(mDimSurface);
+                pw.print(" "); pw.print(mLastDimWidth); pw.print(" x ");
+                pw.println(mLastDimHeight);
         pw.print(prefix);
         pw.print("mDimShown="); pw.print(mDimShown);
         pw.print(" current="); pw.print(mDimCurrentAlpha);

@@ -622,6 +622,8 @@ public class WindowManagerService extends IWindowManager.Stub
 
     final InputManager mInputManager;
 
+    private boolean mForceDisableHardwareKeyboard = false;
+
     // Who is holding the screen on.
     Session mHoldingScreenOn;
     PowerManager.WakeLock mHoldingScreenWakeLock;
@@ -917,6 +919,9 @@ public class WindowManagerService extends IWindowManager.Stub
         mHoldingScreenWakeLock.setReferenceCounted(false);
 
         mInputManager = new InputManager(context, this);
+
+        mForceDisableHardwareKeyboard = context.getResources().getBoolean(
+                com.android.internal.R.bool.config_forceDisableHardwareKeyboard);
 
         PolicyThread thr = new PolicyThread(mPolicy, this, context, pm);
         thr.start();
@@ -2462,7 +2467,7 @@ public class WindowManagerService extends IWindowManager.Stub
 				}
             }
 
-		if (win.mDeathRecipient == null) {
+            if (win.mDeathRecipient == null) {
                 // Client has apparently died, so there is no reason to
                 // continue.
                 Slog.w(TAG, "Adding window client " + client.asBinder()
@@ -2476,14 +2481,14 @@ public class WindowManagerService extends IWindowManager.Stub
             if (res != WindowManagerImpl.ADD_OKAY) {
                 return res;
             }
-
+            
             if (outInputChannel != null && (attrs.inputFeatures
                     & WindowManager.LayoutParams.INPUT_FEATURE_NO_INPUT_CHANNEL) == 0) {
                 String name = win.makeInputChannelName();
                 InputChannel[] inputChannels = InputChannel.openInputChannelPair(name);
                 win.setInputChannel(inputChannels[0]);
                 inputChannels[1].transferTo(outInputChannel);
-
+                
                 mInputManager.registerInputChannel(win.mInputChannel, win.mInputWindowHandle);
             }
 
@@ -2565,7 +2570,7 @@ public class WindowManagerService extends IWindowManager.Stub
             if (localLOGV) Slog.v(
                 TAG, "New client " + client.asBinder()
                 + ": window=" + win);
-
+            
             if (win.isVisibleOrAdding() && updateOrientationFromAppTokensLocked(false)) {
                 reportNewConfig = true;
             }
@@ -2599,7 +2604,7 @@ public class WindowManagerService extends IWindowManager.Stub
             + ", surface=" + win.mSurface);
 
         final long origId = Binder.clearCallingIdentity();
-
+        
         win.disposeInputChannel();
 
         if (DEBUG_APP_TRANSITIONS) Slog.v(
@@ -2768,7 +2773,7 @@ public class WindowManagerService extends IWindowManager.Stub
             Slog.i(TAG, str);
         }
     }
-
+    
     void setTransparentRegionWindow(Session session, IWindow client, Region region) {
         long origId = Binder.clearCallingIdentity();
         try {
@@ -2913,8 +2918,12 @@ public class WindowManagerService extends IWindowManager.Stub
             if (win == null) {
                 return 0;
             }
-            win.mRequestedWidth = requestedWidth;
-            win.mRequestedHeight = requestedHeight;
+            if (win.mRequestedWidth != requestedWidth
+                    || win.mRequestedHeight != requestedHeight) {
+                win.mLayoutNeeded = true;
+                win.mRequestedWidth = requestedWidth;
+                win.mRequestedHeight = requestedHeight;
+            }
             if (attrs != null && seq == win.mSeq) {
                 win.mSystemUiVisibility = systemUiVisibility;
             }
@@ -2935,6 +2944,9 @@ public class WindowManagerService extends IWindowManager.Stub
                 }
                 flagChanges = win.mAttrs.flags ^= attrs.flags;
                 attrChanges = win.mAttrs.copyFrom(attrs);
+                if ((attrChanges&WindowManager.LayoutParams.LAYOUT_CHANGED) != 0) {
+                    win.mLayoutNeeded = true;
+                }
             }
 
             if (DEBUG_LAYOUT) Slog.v(TAG, "Relayout " + win + ": " + win.mAttrs);
@@ -3051,18 +3063,18 @@ public class WindowManagerService extends IWindowManager.Stub
 							Slog.v(TAG, "with config: " + win.mConfiguration);
 						}
                     } else {
-                        if (win.mConfiguration != mCurConfiguration
-                                && (win.mConfiguration == null
-                                        || (diff=mCurConfiguration.diff(win.mConfiguration)) != 0)) {
-                            win.mConfiguration = mCurConfiguration;
-                            if (DEBUG_CONFIGURATION) {
-                                Slog.i(TAG, "Window " + win + " visible with new config: "
-                                        + win.mConfiguration + " / 0x"
-                                        + Integer.toHexString(diff));
-                            }
-                            outConfig.setTo(mCurConfiguration);
+                    if (win.mConfiguration != mCurConfiguration
+                            && (win.mConfiguration == null
+                                    || (diff=mCurConfiguration.diff(win.mConfiguration)) != 0)) {
+                        win.mConfiguration = mCurConfiguration;
+                        if (DEBUG_CONFIGURATION) {
+                            Slog.i(TAG, "Window " + win + " visible with new config: "
+                                    + win.mConfiguration + " / 0x"
+                                    + Integer.toHexString(diff));
                         }
+                        outConfig.setTo(mCurConfiguration);
                     }
+                }
 
                     /** ORIGINAL IMPLEMENTATION**/
                     /**if (win.mConfiguration != mCurConfiguration
@@ -3578,7 +3590,7 @@ public class WindowManagerService extends IWindowManager.Stub
                         break;
                 }*/
                 switch (transit) {
-	                case WindowManagerPolicy.TRANSIT_ACTIVITY_OPEN:
+                    case WindowManagerPolicy.TRANSIT_ACTIVITY_OPEN:
 						if(isLandscapeMode) {
 							if(isMainPanel) {			//Main Panel Transitions
 								animAttr = enter
@@ -3591,9 +3603,9 @@ public class WindowManagerService extends IWindowManager.Stub
 							}
 						} else if(isPortraitMode) {
 							if(isMainPanel) {			//Main Panel Transitions
-								animAttr = enter
-								? com.android.internal.R.styleable.WindowAnimation_activityOpenEnterAnimation
-								: com.android.internal.R.styleable.WindowAnimation_activityOpenExitAnimation;
+                        animAttr = enter
+                                ? com.android.internal.R.styleable.WindowAnimation_activityOpenEnterAnimation
+                                : com.android.internal.R.styleable.WindowAnimation_activityOpenExitAnimation;
 							} else {					//CS Panel Transitions
 								if(isCSPanel0) {
 								    animAttr = enter
@@ -3606,8 +3618,8 @@ public class WindowManagerService extends IWindowManager.Stub
 								}
 							}
 						}
-						break;
-					case WindowManagerPolicy.TRANSIT_ACTIVITY_CLOSE:
+                        break;
+                    case WindowManagerPolicy.TRANSIT_ACTIVITY_CLOSE:
 						if(isLandscapeMode) {
 							if(isMainPanel) {			//Main Panel Transitions
 								animAttr = enter
@@ -3620,9 +3632,9 @@ public class WindowManagerService extends IWindowManager.Stub
 							}
 						} else if(isPortraitMode) {
 							if(isMainPanel) {			//Main Panel Transitions
-								animAttr = enter
-								? com.android.internal.R.styleable.WindowAnimation_activityCloseEnterAnimation
-								: com.android.internal.R.styleable.WindowAnimation_activityCloseExitAnimation;
+                        animAttr = enter
+                                ? com.android.internal.R.styleable.WindowAnimation_activityCloseEnterAnimation
+                                : com.android.internal.R.styleable.WindowAnimation_activityCloseExitAnimation;
 							} else {					//CS Panel Transitions
 								if(isCSPanel0) {
 									animAttr = enter
@@ -3635,8 +3647,8 @@ public class WindowManagerService extends IWindowManager.Stub
 								}
 							}
 						}
-						break;
-					case WindowManagerPolicy.TRANSIT_TASK_OPEN:
+                        break;
+                    case WindowManagerPolicy.TRANSIT_TASK_OPEN:
 						if(isLandscapeMode) {
 							if(isMainPanel) {			//Main Panel Transitions
 								animAttr = enter
@@ -3649,9 +3661,9 @@ public class WindowManagerService extends IWindowManager.Stub
 							}
 						}  else if(isPortraitMode) {
 							if(isMainPanel) {			//Main Panel Transitions
-								animAttr = enter
-								? com.android.internal.R.styleable.WindowAnimation_taskOpenEnterAnimation
-								: com.android.internal.R.styleable.WindowAnimation_taskOpenExitAnimation;
+                        animAttr = enter
+                                ? com.android.internal.R.styleable.WindowAnimation_taskOpenEnterAnimation
+                                : com.android.internal.R.styleable.WindowAnimation_taskOpenExitAnimation;
 							} else {					//CS Panel Transitions
 								if(isCSPanel0) {
 									animAttr = enter
@@ -3664,17 +3676,17 @@ public class WindowManagerService extends IWindowManager.Stub
 								}
 							}
 						}
-						break;
-					case WindowManagerPolicy.TRANSIT_TASK_CLOSE:
+                        break;
+                    case WindowManagerPolicy.TRANSIT_TASK_CLOSE:
 						if(isLandscapeMode) {
 							if(isMainPanel) {			//Main Panel Transitions
-								animAttr = enter
-								? com.android.internal.R.styleable.WindowAnimation_taskCloseEnterAnimation
+                        animAttr = enter
+                                ? com.android.internal.R.styleable.WindowAnimation_taskCloseEnterAnimation
 								: com.android.internal.R.styleable.WindowAnimation_taskCloseExitAnimation_reverse;
 							} else {					//Cs Panel Transitions
 								animAttr = enter
 								? com.android.internal.R.styleable.WindowAnimation_taskCloseEnterAnimation_reverse
-								: com.android.internal.R.styleable.WindowAnimation_taskCloseExitAnimation;
+                                : com.android.internal.R.styleable.WindowAnimation_taskCloseExitAnimation;
 							}
 						} else if(isPortraitMode) {
 							if(isMainPanel) {			//Main Panel Transitions
@@ -3693,8 +3705,8 @@ public class WindowManagerService extends IWindowManager.Stub
 								}
 							}
 						}
-						break;
-					case WindowManagerPolicy.TRANSIT_TASK_TO_FRONT:
+                        break;
+                    case WindowManagerPolicy.TRANSIT_TASK_TO_FRONT:
 						if(isLandscapeMode) {
 							if(isMainPanel) {			//Main Panel Transitions
 								animAttr = enter
@@ -3707,9 +3719,9 @@ public class WindowManagerService extends IWindowManager.Stub
 							}
 						} else if(isPortraitMode) {
 							if(isMainPanel) {			//Main Panel Transitions
-								animAttr = enter
-								? com.android.internal.R.styleable.WindowAnimation_taskToFrontEnterAnimation
-								: com.android.internal.R.styleable.WindowAnimation_taskToFrontExitAnimation;
+                        animAttr = enter
+                                ? com.android.internal.R.styleable.WindowAnimation_taskToFrontEnterAnimation
+                                : com.android.internal.R.styleable.WindowAnimation_taskToFrontExitAnimation;
 							} else {					//CS Panel Transitions
 								if(isCSPanel0) {
 									animAttr = enter
@@ -3722,8 +3734,8 @@ public class WindowManagerService extends IWindowManager.Stub
 								}
 							}
 						}
-						break;
-					case WindowManagerPolicy.TRANSIT_TASK_TO_BACK:
+                        break;
+                    case WindowManagerPolicy.TRANSIT_TASK_TO_BACK:
 						if(isLandscapeMode) {
 							if(isMainPanel) {			//Main Panel Transitions
 								animAttr = enter
@@ -3741,37 +3753,37 @@ public class WindowManagerService extends IWindowManager.Stub
 								: com.android.internal.R.styleable.WindowAnimation_taskToBackExitAnimation;
 							} else {					//CS Panel Transitions
 								if(isCSPanel0) {
-									animAttr = enter
-									? com.android.internal.R.styleable.WindowAnimation_taskToBackEnterAnimation
+                        animAttr = enter
+                                ? com.android.internal.R.styleable.WindowAnimation_taskToBackEnterAnimation
 									: com.android.internal.R.styleable.WindowAnimation_taskToBackExitAnimation_reverse;
 								} else if(isCSPanel1) {
 									animAttr = enter
 									? com.android.internal.R.styleable.WindowAnimation_taskToBackEnterAnimation_reverse
-									: com.android.internal.R.styleable.WindowAnimation_taskToBackExitAnimation;
+                                : com.android.internal.R.styleable.WindowAnimation_taskToBackExitAnimation;
 								}
 							}
 						}
-						break;
-					case WindowManagerPolicy.TRANSIT_WALLPAPER_OPEN:
-						animAttr = enter
-						        ? com.android.internal.R.styleable.WindowAnimation_wallpaperOpenEnterAnimation
-						        : com.android.internal.R.styleable.WindowAnimation_wallpaperOpenExitAnimation;
-						break;
-					case WindowManagerPolicy.TRANSIT_WALLPAPER_CLOSE:
-						animAttr = enter
-						        ? com.android.internal.R.styleable.WindowAnimation_wallpaperCloseEnterAnimation
-						        : com.android.internal.R.styleable.WindowAnimation_wallpaperCloseExitAnimation;
-						break;
-					case WindowManagerPolicy.TRANSIT_WALLPAPER_INTRA_OPEN:
-						animAttr = enter
-						        ? com.android.internal.R.styleable.WindowAnimation_wallpaperIntraOpenEnterAnimation
-						        : com.android.internal.R.styleable.WindowAnimation_wallpaperIntraOpenExitAnimation;
-						break;
-					case WindowManagerPolicy.TRANSIT_WALLPAPER_INTRA_CLOSE:
-						animAttr = enter
-						        ? com.android.internal.R.styleable.WindowAnimation_wallpaperIntraCloseEnterAnimation
-						        : com.android.internal.R.styleable.WindowAnimation_wallpaperIntraCloseExitAnimation;
-						break;
+                        break;
+                    case WindowManagerPolicy.TRANSIT_WALLPAPER_OPEN:
+                        animAttr = enter
+                                ? com.android.internal.R.styleable.WindowAnimation_wallpaperOpenEnterAnimation
+                                : com.android.internal.R.styleable.WindowAnimation_wallpaperOpenExitAnimation;
+                        break;
+                    case WindowManagerPolicy.TRANSIT_WALLPAPER_CLOSE:
+                        animAttr = enter
+                                ? com.android.internal.R.styleable.WindowAnimation_wallpaperCloseEnterAnimation
+                                : com.android.internal.R.styleable.WindowAnimation_wallpaperCloseExitAnimation;
+                        break;
+                    case WindowManagerPolicy.TRANSIT_WALLPAPER_INTRA_OPEN:
+                        animAttr = enter
+                                ? com.android.internal.R.styleable.WindowAnimation_wallpaperIntraOpenEnterAnimation
+                                : com.android.internal.R.styleable.WindowAnimation_wallpaperIntraOpenExitAnimation;
+                        break;
+                    case WindowManagerPolicy.TRANSIT_WALLPAPER_INTRA_CLOSE:
+                        animAttr = enter
+                                ? com.android.internal.R.styleable.WindowAnimation_wallpaperIntraCloseEnterAnimation
+                                : com.android.internal.R.styleable.WindowAnimation_wallpaperIntraCloseExitAnimation;
+                        break;
                 }
                 a = animAttr != 0 ? loadAnimation(lp, animAttr) : null;
                 if (DEBUG_ANIM) Slog.v(TAG, "applyAnimation: wtoken=" + wtoken
@@ -3961,7 +3973,7 @@ public class WindowManagerService extends IWindowManager.Stub
                 "addAppToken()")) {
             throw new SecurityException("Requires MANAGE_APP_TOKENS permission");
         }
-
+        
         // Get the dispatching timeout here while we are not holding any locks so that it
         // can be cached by the AppWindowToken.  The timeout value is used later by the
         // input dispatcher in code that does hold locks.  If we did not cache the value
@@ -4916,7 +4928,7 @@ public class WindowManagerService extends IWindowManager.Stub
                 }
             }
         }
-
+        
         return config;
     }
 
@@ -4927,7 +4939,7 @@ public class WindowManagerService extends IWindowManager.Stub
      * setNewConfiguration() TO TELL THE WINDOW MANAGER IT CAN UNFREEZE THE
      * SCREEN.  This will typically be done for you if you call
      * sendNewConfiguration().
-     *
+     * 
      * The orientation is computed from non-application windows first. If none of
      * the non-application windows specify orientation, the orientation is computed from
      * application tokens.
@@ -4990,7 +5002,7 @@ public class WindowManagerService extends IWindowManager.Stub
             performLayoutAndPlaceSurfacesLocked();
         }
     }
-
+    
     public void setAppOrientation(IApplicationToken token, int requestedOrientation) {
         if (!checkCallingPermission(android.Manifest.permission.MANAGE_APP_TOKENS,
                 "setAppOrientation()")) {
@@ -6668,7 +6680,7 @@ public class WindowManagerService extends IWindowManager.Stub
                 if (maxLayer < ws.mAnimLayer) {
                     maxLayer = ws.mAnimLayer;
                 }
-
+                
                 // Don't include wallpaper in bounds calculation
                 if (!ws.mIsWallpaper) {
                     final Rect wf = ws.mFrame;
@@ -6691,6 +6703,9 @@ public class WindowManagerService extends IWindowManager.Stub
 
             // The screenshot API does not apply the current screen rotation.
             rot = mDisplay.getRotation();
+            // Allow for abnormal hardware orientation
+            rot = (rot + (android.os.SystemProperties.getInt("ro.sf.hwrotation",0) / 90 )) % 4;
+
             int fw = frame.width();
             int fh = frame.height();
 
@@ -6797,8 +6812,8 @@ public class WindowManagerService extends IWindowManager.Stub
 					Slog.e(TAG, "Source Bitmap - Height: " + bmHeight + " Width: " + bmWidth);
 					Slog.e(TAG, "Cropped Bitmap - x: " + left + " y: " + top + " width: " + scaledWidth + " height: " + scaledHeight);
 				}
-				return bm;
-			}
+        return bm;
+    }
         } else {
 			return bm;
         }
@@ -6982,7 +6997,7 @@ public class WindowManagerService extends IWindowManager.Stub
         mPolicy.setRotationLw(mRotation);
 
 
-		mWindowsFreezingScreen = true;
+        mWindowsFreezingScreen = true;
         mH.removeMessages(H.WINDOW_FREEZE_TIMEOUT);
         mH.sendMessageDelayed(mH.obtainMessage(H.WINDOW_FREEZE_TIMEOUT), 2000);
         mWaitingForConfig = true;
@@ -8745,7 +8760,10 @@ public class WindowManagerService extends IWindowManager.Stub
         config.compatSmallestScreenWidthDp = computeCompatSmallestWidth(rotated, dm, dw, dh);
 
         // Determine whether a hard keyboard is available and enabled.
-        boolean hardKeyboardAvailable = config.keyboard != Configuration.KEYBOARD_NOKEYS;
+        boolean hardKeyboardAvailable = false;
+        if (!mForceDisableHardwareKeyboard) {
+            hardKeyboardAvailable = config.keyboard != Configuration.KEYBOARD_NOKEYS;
+        }
         if (hardKeyboardAvailable != mHardKeyboardAvailable) {
             mHardKeyboardAvailable = hardKeyboardAvailable;
             mHardKeyboardEnabled = hardKeyboardAvailable;
@@ -9395,8 +9413,8 @@ public class WindowManagerService extends IWindowManager.Stub
 							  //normal window and returns the original mFrame value.
 							if (DEBUG_WP_POSITIONS)
 								Log.v(TAG, "Skip resetting mFrame for:" + win + " of type: WindowManager.LayoutParams.TYPE_BASE_APPLICATION");
-							continue;
-						}
+								continue;
+					}
 
                         if (DEBUG_WP_POSITIONS) {
 							if(attrs.type == WindowManager.LayoutParams.TYPE_APPLICATION_ATTACHED_DIALOG) {
@@ -10567,8 +10585,11 @@ public class WindowManagerService extends IWindowManager.Stub
         final int N = mWindows.size();
         int i;
 
-        if (DEBUG_LAYOUT) Slog.v(TAG, "performLayout: needed="
-                + mLayoutNeeded + " dw=" + dw + " dh=" + dh);
+        if (DEBUG_LAYOUT) {
+            Slog.v(TAG, "-------------------------------------");
+            Slog.v(TAG, "performLayout: needed="
+                    + mLayoutNeeded + " dw=" + dw + " dh=" + dh);
+        }
         
         mPolicy.beginLayoutLw(dw, dh, mRotation);
 
@@ -10585,19 +10606,20 @@ public class WindowManagerService extends IWindowManager.Stub
             // Don't do layout of a window if it is not visible, or
             // soon won't be visible, to avoid wasting time and funky
             // changes while a window is animating away.
-            final AppWindowToken atoken = win.mAppToken;
-            final boolean gone = win.mViewVisibility == View.GONE
-                    || !win.mRelayoutCalled
-                    || (atoken == null && win.mRootToken.hidden)
-                    || (atoken != null && atoken.hiddenRequested)
-                    || win.mAttachedHidden
-                    || win.mExiting || win.mDestroying;
+            final boolean gone = win.isGoneForLayoutLw();
 
             if (DEBUG_LAYOUT && !win.mLayoutAttached) {
-                Slog.v(TAG, "First pass " + win
+                Slog.v(TAG, "1ST PASS " + win
                         + ": gone=" + gone + " mHaveFrame=" + win.mHaveFrame
                         + " mLayoutAttached=" + win.mLayoutAttached);
-                if (gone) Slog.v(TAG, "  (mViewVisibility="
+                final AppWindowToken atoken = win.mAppToken;
+                if (gone) Slog.v(TAG, "  GONE: mViewVisibility="
+                        + win.mViewVisibility + " mRelayoutCalled="
+                        + win.mRelayoutCalled + " hidden="
+                        + win.mRootToken.hidden + " hiddenRequested="
+                        + (atoken != null && atoken.hiddenRequested)
+                        + " mAttachedHidden=" + win.mAttachedHidden);
+                else Slog.v(TAG, "  VIS: mViewVisibility="
                         + win.mViewVisibility + " mRelayoutCalled="
                         + win.mRelayoutCalled + " hidden="
                         + win.mRootToken.hidden + " hiddenRequested="
@@ -10610,16 +10632,17 @@ public class WindowManagerService extends IWindowManager.Stub
             // if they want.  (We do the normal layout for INVISIBLE
             // windows, since that means "perform layout as normal,
             // just don't display").
-            if (!gone || !win.mHaveFrame) {
+            if (!gone || !win.mHaveFrame || win.mLayoutNeeded) {
                 if (!win.mLayoutAttached) {
                     if (initial) {
                         //Slog.i(TAG, "Window " + this + " clearing mContentChanged - initial");
                         win.mContentChanged = false;
                     }
+                    win.mLayoutNeeded = false;
                     win.prelayout();
                     mPolicy.layoutWindowLw(win, win.mAttrs, null);
                     win.mLayoutSeq = seq;
-                    if (DEBUG_LAYOUT) Slog.v(TAG, "-> mFrame="
+                    if (DEBUG_LAYOUT) Slog.v(TAG, "  LAYOUT: mFrame="
                             + win.mFrame + " mContainingFrame="
                             + win.mContainingFrame + " mDisplayFrame="
                             + win.mDisplayFrame);
@@ -10637,7 +10660,7 @@ public class WindowManagerService extends IWindowManager.Stub
             WindowState win = mWindows.get(i);
 
             if (win.mLayoutAttached) {
-                if (DEBUG_LAYOUT) Slog.v(TAG, "Second pass " + win
+                if (DEBUG_LAYOUT) Slog.v(TAG, "2ND PASS " + win
                         + " mHaveFrame=" + win.mHaveFrame
                         + " mViewVisibility=" + win.mViewVisibility
                         + " mRelayoutCalled=" + win.mRelayoutCalled);
@@ -10647,15 +10670,16 @@ public class WindowManagerService extends IWindowManager.Stub
                 // windows, since that means "perform layout as normal,
                 // just don't display").
                 if ((win.mViewVisibility != View.GONE && win.mRelayoutCalled)
-                        || !win.mHaveFrame) {
+                        || !win.mHaveFrame || win.mLayoutNeeded) {
                     if (initial) {
                         //Slog.i(TAG, "Window " + this + " clearing mContentChanged - initial");
                         win.mContentChanged = false;
                     }
+                    win.mLayoutNeeded = false;
                     win.prelayout();
                     mPolicy.layoutWindowLw(win, win.mAttrs, win.mAttachedWindow);
                     win.mLayoutSeq = seq;
-                    if (DEBUG_LAYOUT) Slog.v(TAG, "-> mFrame="
+                    if (DEBUG_LAYOUT) Slog.v(TAG, "  LAYOUT: mFrame="
                             + win.mFrame + " mContainingFrame="
                             + win.mContainingFrame + " mDisplayFrame="
                             + win.mDisplayFrame);
@@ -11392,8 +11416,8 @@ public class WindowManagerService extends IWindowManager.Stub
 					mWindowAnimationBackgroundSurface.mDimX = target.mFrame.left;
 					mWindowAnimationBackgroundSurface.mDimY = target.mFrame.top;
 					mWindowAnimationBackgroundSurface.show(target.mFrame.width(), target.mFrame.height(),
-                                    target.mAnimLayer - LAYER_OFFSET_DIM,
-                                    windowAnimationBackgroundColor);
+                            target.mAnimLayer - LAYER_OFFSET_DIM,
+                            windowAnimationBackgroundColor);
                     /*mWindowAnimationBackgroundSurface.show(dw, dh,
                     target.mAnimLayer - LAYER_OFFSET_DIM,
                     windowAnimationBackgroundColor);*/
@@ -11802,57 +11826,11 @@ public class WindowManagerService extends IWindowManager.Stub
                                 if (mDimAnimator == null) {
                                     mDimAnimator = new DimAnimator(mFxSession);
                                 }
-                                /*mDimAnimator.show(innerDw, innerDh);
-                                mDimAnimator.updateParameters(mContext.getResources(),
-                                        w, currentTime);*/
-
-                        /**
-						 * Author: Onskreen
-						 * Date: 06/05/2011
-						 *
-						 * Sets the dim surface within its layout rect
-						 */
-						if(w != null){
-                            /**
-                             * Author: Onskreen
-                             * Date: 11/08/2011
-                             *
-                             * Sets the dim surface rect according to the window frame
-                             * position it belongs to else it occupies the full screen.
-                             */
-							 Rect dimRect = new Rect();
-                             AppWindowToken appToken = w.mAppToken;
-                             if(appToken != null) {
-                                for (int j = 0; j < mWindowPanels.size(); j++) {
-                                    WindowPanel wp = mWindowPanels.get(j);
-                                    if(wp.contains(appToken.token)){
-                                        dimRect.set(wp.getPos());
-
-                                        break;
-                                    }
-                                }
-                            }
-                            if(!dimRect.isEmpty()) {
-                                /**
-                                 * Author: Onskreen
-                                 * Date: 23/08/2011
-                                 *
-                                 * When cornerstone is in RUNNING_CLOSED state, set the dim surface 'x'
-                                 * postion as the total width of the screen to avoid the odd visual effect.
-                                 */
-                                if(mCornerstoneState == Cornerstone_State.RUNNING_CLOSED) {
-                                    mDimAnimator.mDimX = innerDw;
+                                if (attrs.type == WindowManager.LayoutParams.TYPE_BOOT_PROGRESS) {
+                                    mDimAnimator.show(dw, dh);
                                 } else {
-                                    mDimAnimator.mDimX = dimRect.left;
+                                    mDimAnimator.show(innerDw, innerDh);
                                 }
-								mDimAnimator.mDimY = dimRect.top;
-								mDimAnimator.show(dimRect.width(), dimRect.height());
-					    } else{
-					        mDimAnimator.show(innerDw, innerDh);
-					    }
-					} else{
-					    mDimAnimator.show(innerDw, innerDh);
-					}
                                 mDimAnimator.updateParameters(mContext.getResources(),
                                         w, currentTime);
                             }
@@ -12056,18 +12034,18 @@ public class WindowManagerService extends IWindowManager.Stub
 						win.mVisibleInsetsChanged = false;
 						win.mSurfaceResized = false;
                     } else {
-                        boolean configChanged =
-						win.mConfiguration != mCurConfiguration
-						&& (win.mConfiguration == null
-						|| (diff=mCurConfiguration.diff(win.mConfiguration)) != 0);
-						if ((DEBUG_RESIZE || DEBUG_ORIENTATION || DEBUG_CONFIGURATION)
-							&& configChanged) {
-							Slog.i(TAG, "Sending new config to window " + win + ": "
-								+ win.mSurfaceW + "x" + win.mSurfaceH
-								+ " / " + mCurConfiguration + " / 0x"
-								+ Integer.toHexString(diff));
-					}
-					win.mConfiguration = mCurConfiguration;
+                    boolean configChanged =
+                        win.mConfiguration != mCurConfiguration
+                        && (win.mConfiguration == null
+                                || (diff=mCurConfiguration.diff(win.mConfiguration)) != 0);
+                    if ((DEBUG_RESIZE || DEBUG_ORIENTATION || DEBUG_CONFIGURATION)
+                            && configChanged) {
+                        Slog.i(TAG, "Sending new config to window " + win + ": "
+                                + win.mSurfaceW + "x" + win.mSurfaceH
+                                + " / " + mCurConfiguration + " / 0x"
+                                + Integer.toHexString(diff));
+                    }
+                    win.mConfiguration = mCurConfiguration;
 
 	                    /**
 	                     * Author: Onskreen
@@ -12110,14 +12088,14 @@ public class WindowManagerService extends IWindowManager.Stub
 	                                + Integer.toHexString(diff));
 	                    }
 	                    win.mConfiguration = mCurConfiguration;
-	                    if (DEBUG_ORIENTATION && win.mDrawPending) Slog.i(
-	                            TAG, "Resizing " + win + " WITH DRAW PENDING"); 
-	                    win.mClient.resized((int)win.mSurfaceW, (int)win.mSurfaceH,
-	                            win.mLastContentInsets, win.mLastVisibleInsets, win.mDrawPending,
-	                            configChanged ? win.mConfiguration : null);
-	                    win.mContentInsetsChanged = false;
-	                    win.mVisibleInsetsChanged = false;
-	                    win.mSurfaceResized = false;
+                    if (DEBUG_ORIENTATION && win.mDrawPending) Slog.i(
+                            TAG, "Resizing " + win + " WITH DRAW PENDING"); 
+                    win.mClient.resized((int)win.mSurfaceW, (int)win.mSurfaceH,
+                            win.mLastContentInsets, win.mLastVisibleInsets, win.mDrawPending,
+                            configChanged ? win.mConfiguration : null);
+                    win.mContentInsetsChanged = false;
+                    win.mVisibleInsetsChanged = false;
+                    win.mSurfaceResized = false;
 **/
                     }
                 } catch (RemoteException e) {
@@ -12860,6 +12838,10 @@ public class WindowManagerService extends IWindowManager.Stub
     @Override
     public boolean hasNavigationBar() {
         return mPolicy.hasNavigationBar();
+    }
+
+    public void lockNow() {
+        mPolicy.lockNow();
     }
 
     void dumpInput(FileDescriptor fd, PrintWriter pw, boolean dumpAll) {

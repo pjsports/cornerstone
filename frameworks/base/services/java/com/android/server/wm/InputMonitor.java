@@ -29,13 +29,13 @@ import java.util.Arrays;
 
 final class InputMonitor {
     private final WindowManagerService mService;
-
+    
     // Current window with input focus for keys and other non-touch events.  May be null.
     private WindowState mInputFocus;
-
+    
     // When true, prevents input dispatch from proceeding until set to false again.
     private boolean mInputDispatchFrozen;
-
+    
     // When true, input dispatch proceeds normally.  Otherwise all events are dropped.
     private boolean mInputDispatchEnabled = true;
 
@@ -54,9 +54,9 @@ final class InputMonitor {
     public InputMonitor(WindowManagerService service) {
         mService = service;
     }
-
+    
     /* Notifies the window manager about a broken input channel.
-     *
+     * 
      * Called by the InputManager.
      */
     public void notifyInputChannelBroken(InputWindowHandle inputWindowHandle) {
@@ -72,10 +72,10 @@ final class InputMonitor {
             }
         }
     }
-
+    
     /* Notifies the window manager about an application that is not responding.
      * Returns a new timeout to continue waiting in nanoseconds, or 0 to abort dispatch.
-     *
+     * 
      * Called by the InputManager.
      */
     public long notifyANR(InputApplicationHandle inputApplicationHandle,
@@ -91,7 +91,7 @@ final class InputMonitor {
                 }
             }
         }
-
+        
         if (appWindowToken == null && inputApplicationHandle != null) {
             appWindowToken = inputApplicationHandle.appWindowToken;
             if (appWindowToken != null) {
@@ -183,10 +183,10 @@ final class InputMonitor {
                 // Skip this window because it cannot possibly receive input.
                 continue;
             }
-
+            
             final int flags = child.mAttrs.flags;
             final int type = child.mAttrs.type;
-
+            
             final boolean hasFocus = (child == mInputFocus);
             final boolean isVisible = child.isVisibleLw();
             final boolean hasWallpaper = (child == mService.mWallpaperTarget)
@@ -271,7 +271,7 @@ final class InputMonitor {
     public void notifyLidSwitchChanged(long whenNanos, boolean lidOpen) {
         mService.mPolicy.notifyLidSwitchChanged(whenNanos, lidOpen);
     }
-
+    
     /* Provides an opportunity for the window manager policy to intercept early key
      * processing as soon as the key has been read from the device. */
     public int interceptKeyBeforeQueueing(
@@ -293,7 +293,7 @@ final class InputMonitor {
         WindowState windowState = focus != null ? (WindowState) focus.windowState : null;
         return mService.mPolicy.interceptKeyBeforeDispatching(windowState, event, policyFlags);
     }
-
+    
     /* Provides an opportunity for the window manager policy to process a key that
      * the application did not handle. */
     public KeyEvent dispatchUnhandledKey(
@@ -301,7 +301,7 @@ final class InputMonitor {
         WindowState windowState = focus != null ? (WindowState) focus.windowState : null;
         return mService.mPolicy.dispatchUnhandledKey(windowState, event, policyFlags);
     }
-
+    
     /* Called when the current input focus changes.
      * Layer assignment is assumed to be complete by the time this is called.
      */
@@ -326,7 +326,7 @@ final class InputMonitor {
             }
         }
     }
-
+    
     public void setFocusedAppLw(AppWindowToken newApp) {
         // Focused app has changed.
         if (newApp == null) {
@@ -345,62 +345,62 @@ final class InputMonitor {
             mService.mInputManager.setFocusedApplication(handle);*/
         }
     }
-
+    
     public void pauseDispatchingLw(WindowToken window) {
         if (! window.paused) {
             if (WindowManagerService.DEBUG_INPUT) {
                 Slog.v(WindowManagerService.TAG, "Pausing WindowToken " + window);
             }
-
+            
             window.paused = true;
             updateInputWindowsLw(true /*force*/);
         }
     }
-
+    
     public void resumeDispatchingLw(WindowToken window) {
         if (window.paused) {
             if (WindowManagerService.DEBUG_INPUT) {
                 Slog.v(WindowManagerService.TAG, "Resuming WindowToken " + window);
             }
-
+            
             window.paused = false;
             updateInputWindowsLw(true /*force*/);
         }
     }
-
+    
     public void freezeInputDispatchingLw() {
         if (! mInputDispatchFrozen) {
             if (WindowManagerService.DEBUG_INPUT) {
                 Slog.v(WindowManagerService.TAG, "Freezing input dispatching");
             }
-
+            
             mInputDispatchFrozen = true;
             updateInputDispatchModeLw();
         }
     }
-
+    
     public void thawInputDispatchingLw() {
         if (mInputDispatchFrozen) {
             if (WindowManagerService.DEBUG_INPUT) {
                 Slog.v(WindowManagerService.TAG, "Thawing input dispatching");
             }
-
+            
             mInputDispatchFrozen = false;
             updateInputDispatchModeLw();
         }
     }
-
+    
     public void setEventDispatchingLw(boolean enabled) {
         if (mInputDispatchEnabled != enabled) {
             if (WindowManagerService.DEBUG_INPUT) {
                 Slog.v(WindowManagerService.TAG, "Setting event dispatching to " + enabled);
             }
-
+            
             mInputDispatchEnabled = enabled;
             updateInputDispatchModeLw();
         }
     }
-
+    
     private void updateInputDispatchModeLw() {
         mService.mInputManager.setInputDispatchMode(mInputDispatchEnabled, mInputDispatchFrozen);
     }
