@@ -9,8 +9,8 @@ $ curl https://dl-ssl.google.com/dl/googlesource/git-repo/repo > ~/bin/repo
 $ chmod a+x ~/bin/repo
 
 Download CM9 source
-$ mkdir ~/CM9_4.0.4
-$ cd ~/CM9_4.0.4
+$ mkdir ~/CM9
+$ cd ~/CM9
 $ repo init -u git://github.com/CyanogenMod/android.git -b ics
 $ repo sync
 
@@ -20,14 +20,14 @@ $ cd ~/cornerstone
 $ git pull
 
 Merg the directories
-$ rsync -a cornerstone/ CM9_4.0.4/ --exclude='.git*'
+$ rsync -a cornerstone/ CM9/ --exclude='.git*'
 
 Build & Compile
-$ cd ~/CM9_4.0.4
-$ . build/envsetup.sh && brunch your_devices
+$ cd ~/CM9
+$ . build/envsetup.sh && brunch YOUR_DEVICE
 
-Download ROM CM9 4.0.4 for ACER Iconia A500
--
+Download ROM CM9+Cornerstone for ACER Iconia A500
+- http://www.mediafire.com/?jwpp0bl9yrfgguz
 
 Thanks to 
 - Cornerstone project https://github.com/Onskreen/cornerstone
