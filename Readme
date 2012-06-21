@@ -24,6 +24,7 @@ $ rsync -a cornerstone/ CM9/ --exclude='.git*'
 
 Build & Compile
 $ cd ~/CM9
+$ ./vendor/cm/get-prebuilts
 $ . build/envsetup.sh && brunch YOUR_DEVICE
 
 Download ROM CM9+Cornerstone for ACER Iconia A500
